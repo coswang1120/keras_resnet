@@ -1,9 +1,8 @@
 # keras_resnet
 
-I have an implementation of the 18 layer model
-[Deep Residual Learning for Image Recognition](http://arxiv.org/abs/1512.03385). I use *Keras* with a
-graph model which facilitates the identity connections at the heart of
-their paper.
+Here lies an implementation of the 18-layer model from
+[Deep Residual Learning for Image Recognition](http://arxiv.org/abs/1512.03385). I used *Keras* with a
+graph model which facilitates the identity connections at the heart of ResNets.
 
 This is the skeleton of another project I'm working on...so there's
 nothing to run just yet.  
