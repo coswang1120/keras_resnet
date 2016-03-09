@@ -18,4 +18,4 @@ of layers.
 
   - http://www.vision.caltech.edu/visipedia/CUB-200.html
 
-3. Implement zero padding identity residual connections across layers with dimension changes (when stride=2)
+3. Implement zero padding identity connections across layers with dimension changes (when stride=2)
