@@ -1,4 +1,4 @@
-# keras_resnet
+# A Residual net in Keras
 
 Here lies an implementation of the 18-layer model from
 [Deep Residual Learning for Image Recognition](http://arxiv.org/abs/1512.03385). I used *Keras* with a
