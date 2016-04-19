@@ -62,7 +62,7 @@ train_ind, test_ind, _, _ = train_test_split(range(n_images),
                                              test_size=0.1, 
                                              random_state=4)
 
-print 'Mean for all images: {}'.format(im_mean)
+print('Mean for all images: {}'.format(im_mean))
 
 #%% ResNet-like 
 """18 layer ResNet with skip connections 
