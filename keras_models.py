@@ -1,61 +1,44 @@
 from keras.layers.convolutional import AveragePooling2D
 from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.layers.core import Dense, Activation, Flatten, Reshape
+from keras.layers import merge, Input
 from keras.layers.normalization import BatchNormalization
-from keras.models import Graph
-from keras.models import model_from_json
-
+from keras.models import Sequential, Model
 from keras.optimizers import SGD
 from keras.regularizers import l2
-
-import pandas as pd
-
-
-CSV_DIR = '../data/'
-
 
 
 class ResidualModel(object):
     """ Keras model and a method to create an arbitrary residual network."""
 
-    def __init__(self, weight_decay=0.0001, nb_epochs=10, mini_batch_size=100, graph=None):
+    def __init__(self, weight_decay=0.0001):
         self.weight_decay = weight_decay
-        self.graph = graph
+        self.model = None
 
-    def base_convolution(self, input_name, nb_filters, layer_nb, conv_nb,
-                         conv_shape=(3,3),
-                         stride=(1,1),
+    def base_convolution(self, input_layer, nb_filters, conv_shape=(3, 3),
+                         stride=(1, 1),
                          relu_activation=True,
                          **kwargs):
         """Convolution2D -> BatchNormalization -> ReLU
 
-        :param conv_nb: convolution number
-        :param layer_nb: layer number
         :param nb_filters: number of filters
-        :param input_name: name of input
+        :param input_layer: name of input
         """
-        convolution = 'conv{}_{}'.format(layer_nb, conv_nb)
-        normalization = 'bn{}_{}'.format(layer_nb, conv_nb)
-        activation = 'relu{}_{}'.format(layer_nb, conv_nb)
 
-        self.graph.add_node(Convolution2D(nb_filter=nb_filters,
-                                          nb_row=conv_shape[0],
-                                          nb_col=conv_shape[1],
-                                          W_regularizer=l2(self.weight_decay),
-                                          subsample=stride,
-                                          border_mode='same',
-                                          **kwargs),
-                            name=convolution, input=input_name)
+        x = Convolution2D(nb_filter=nb_filters,
+                          nb_row=conv_shape[0], nb_col=conv_shape[1],
+                          W_regularizer=l2(self.weight_decay),
+                          subsample=stride,
+                          border_mode='same',
+                          **kwargs)(input_layer)
 
-        self.graph.add_node(BatchNormalization(), name=normalization, input=convolution)
-
+        x = BatchNormalization()(x)
         if relu_activation:
-            self.graph.add_node(Activation('relu'), name=activation, input=normalization)
-            return activation
-        else:
-            return normalization
+            x = Activation('relu')(x)
 
-    def residual_block(self, input_name, nb_filters, layer_nb, conv_nb, first_stride=(1, 1)):
+        return x
+
+    def residual_block(self, input_layer, nb_filters, first_stride=(1, 1)):
         """Add a residual building block
 
         A residual block consists of 2 base convolutions with a short/identity
@@ -64,47 +47,36 @@ class ResidualModel(object):
         Input:
         input_name: name of input node, string
         :type nb_filters: int
-        :type input_name: str
+        :type input_layer: str
 
         Output:
         output_name: name of output node, string
         """
 
         # First convolution
-        first_relu = self.base_convolution(input_name=input_name, nb_filters=nb_filters,
-                                           layer_nb=layer_nb, conv_nb=conv_nb,
-                                           stride=first_stride)
-        output_shape = self.graph.nodes[first_relu].output_shape
+        x = self.base_convolution(input_layer=input_layer, nb_filters=nb_filters,
+                                  stride=first_stride)
+        output_shape = x._shape_as_list()
 
         # Second Convolution, with Batch Normalization, without ReLU activation
-        second_bn = self.base_convolution(input_name=first_relu, nb_filters=nb_filters,
-                                          layer_nb=layer_nb, conv_nb=conv_nb+1,
-                                          stride=(1, 1),
-                                          relu_activation=False)
+        x = self.base_convolution(input_layer=x, nb_filters=nb_filters, stride=(1, 1),
+                                  relu_activation=False)
 
         # Add the short convolution, with Batch Normalization
         if first_stride == (2, 2):
-            short_conv = 'short{}_{}'.format(layer_nb, conv_nb)
-            self.graph.add_node(Convolution2D(nb_filter=nb_filters//4,
+            input_layer = Convolution2D(nb_filter=nb_filters//4,
                                               nb_row=1,
                                               nb_col=1,
                                               W_regularizer=l2(self.weight_decay),
-                                              border_mode='same'),
-                                name=short_conv, input=input_name)
+                                              border_mode='same')(input_layer)
 
-            short_bn = 'short_bn{}_{}'.format(layer_nb, conv_nb+1)
-            self.graph.add_node(BatchNormalization(), name=short_bn, input=short_conv)
-            short_reshape = 'short_reshape{}_{}'.format(layer_nb, conv_nb)
-            self.graph.add_node(Reshape(output_shape[1:]), name=short_reshape, input=short_bn)
+            input_layer = BatchNormalization()(x)
+            input_layer = Reshape(output_shape[1:])(x)
 
-            input_name = short_reshape       # Overwrite input_name with reshaped short circuit
+        x = merge(inputs=[x, input_layer], mode='sum')
+        x = Activation('relu')(x)
 
-        output_activation = 'relu{}_{}'.format(layer_nb, conv_nb+1)
-        self.graph.add_node(Activation('relu'), name=output_activation,
-                            inputs=[second_bn, input_name],
-                            merge_mode='sum')
-
-        return output_activation
+        return x
 
     def build_residual_network(self, nb_blocks=[1,3,4,6,3],
                                initial_nb_filters=64,
@@ -142,107 +114,49 @@ class ResidualModel(object):
         Reference: http://arxiv.org/abs/1512.03385
         """
         imsize = 224
-        self.graph = Graph()
+        self.model = Sequential()
         # -------------------------- Layer Group 1 ----------------------------
-        self.graph.add_input(name='input', input_shape=(3, imsize, imsize))
-        output_name = self.base_convolution(input_name='input',
-                                            nb_filters=initial_nb_filters,
-                                            layer_nb=1,
-                                            conv_nb=1,
-                                            stride=(2, 2),
-                                            conv_shape=first_conv_shape,
-                                            input_shape=(3, imsize, imsize),
-                                            dim_ordering='th')
+        input_image = Input(shape=(3, imsize, imsize))
+        x = self.base_convolution(input_layer=input_image,
+                                  nb_filters=initial_nb_filters,
+                                  conv_shape=first_conv_shape,
+                                  stride=(2, 2))
         # Output shape = (None,16,112,112)
-        self.graph.add_node(MaxPooling2D(pool_size=(3, 3), strides=(2, 2),
-                                         border_mode='same'),
-                            name='pool1', input=output_name)
+        x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode='same')(x)
         # Output shape = (None,initial_nb_filters,56,56)
         # -------------------------- Layer Group 2 ----------------------------
-        output_name = self.residual_block(input_name='pool1',
-                                          nb_filters=initial_nb_filters,
-                                          layer_nb=2,
-                                          conv_nb=1)
-        for i in range(1, nb_blocks[1]):
-            output_name = self.residual_block(input_name=output_name,
-                                              nb_filters=initial_nb_filters,
-                                              layer_nb=2,
-                                              conv_nb=(2*i+1))
+        for i in range(1, nb_blocks[1]+1):
+            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters)
         # self.graph.nodes[output_name] = (None,initial_nb_filters,56,56)
         # output size = 14x14
         # -------------------------- Layer Group 3 ----------------------------
-        output_name = self.residual_block(input_name=output_name,
-                                          nb_filters=initial_nb_filters*2,
-                                          layer_nb=3, conv_nb=1, first_stride=(2, 2))
+        x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters*2, first_stride=(2, 2))
         for i in range(1, nb_blocks[2]):
-            output_name = self.residual_block(input_name=output_name,
-                                              nb_filters=initial_nb_filters*2,
-                                              layer_nb=3,
-                                              conv_nb=(2*i + 1))
+            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 2)
         # -------------------------- Layer Group 4 ----------------------------
-        output_name = self.residual_block(input_name=output_name,
-                                          nb_filters=initial_nb_filters*4,
-                                          layer_nb=4, conv_nb=1, first_stride=(2,2))
+        x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 4,
+                                          first_stride=(2, 2))
         for i in range(1, nb_blocks[3]):
-            output_name = self.residual_block(input_name=output_name,
-                                              nb_filters=initial_nb_filters*4,
-                                              layer_nb=4,
-                                              conv_nb=(2*i+1))
+            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 4)
         # output size = 14x14
         # -------------------------- Layer Group 5 ----------------------------
-        output_name = self.residual_block(input_name=output_name,
-                                          nb_filters=initial_nb_filters*8,
-                                          layer_nb=5, conv_nb=1, first_stride=(2, 2))
+        x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 8,
+                                          first_stride=(2, 2))
         for i in range(1, nb_blocks[4]):
-            output_name = self.residual_block(input_name=output_name,
-                                              nb_filters=initial_nb_filters*8,
-                                              layer_nb=5,
-                                              conv_nb=(2*i + 1))
+            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 8)
         # output size = 7x7
-        self.graph.add_node(AveragePooling2D(pool_size=(7,7),
-                                             border_mode='same'),
-                            name='pool2', input=output_name)
-        self.graph.add_node(Flatten(), name='flatten', input='pool2')
-        self.graph.add_node(Dense(9, activation='sigmoid'), name='dense', input='flatten')
-        self.graph.add_output(name='output', input='dense')
+        x = AveragePooling2D(pool_size=(7, 7), border_mode='same')(x)
+        x = Flatten()(x)
+        output_tensor = Dense(9, activation='sigmoid')(x)
 
-        sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
-        self.graph.compile(optimizer=sgd, loss={'output': 'binary_crossentropy'})
+        return input_image, output_tensor
 
-    # def fit(self, input_tensor, target, validation_split=0.1):
-    #     self.graph.fit({'input': input_tensor, 'output': train_df.iloc[:,label_start:].values},
-    #                    batch_size=mini_batch_size, nb_epoch=number_of_epochs,
-    #                    validation_split=validation_split,
-    #                    # validation_data={'input': tensor[test_ind],
-    #                    #                  'output': train_df.iloc[test_ind,label_start:].values},
-    #                    shuffle=True,
-    #                    callbacks=[TensorBoard('/home/rory/logs/2'),
-    #                               LearningRateScheduler(lr_schedule)],
-    #                    verbose=1)
-
-    def load_graph(self, model_name_stem):
-        self.graph = self._load_model(model_stem=model_name_stem)
-
-    def generate_submission(self, test_im_generator):
-        test_photo_ids = []
-        predictions = []
-        for (batch_data, batch_photo_ids) in test_im_generator:
-            predictions.append(self.graph.predict(batch_data))
-            test_photo_ids.append(batch_photo_ids)
-
-        test_df = pd.DataFrame(test_photo_ids, columns=['photo_id'])
-
-        test_df['labels'] = self.generate_labels_df(predictions)
-
-        # Column names: photo_id, business_id
-        photo_biz_ids_df = pd.read_csv(CSV_DIR + 'test_photo_to_biz.csv')
-
-        test_df = pd.merge(test_df, photo_biz_ids_df, on='photo_id')
-        submission_df = test_df.drop_duplicates('business_id')
-
-        return submission_df
 
 if __name__ == '__main__':
-    test_model = KerasGraphModel()
-    test_model.load_graph('../18_layer_4_filters')
-    test_model.graph.summary()
+    model_factory = ResidualModel()
+    input_tensor, output_tensor = model_factory.build_residual_network()
+
+    model = Model(input=input_tensor, output=output_tensor)
+    sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
+    model.compile(optimizer=sgd, loss='binary_crossentropy')
+    model.summary()
