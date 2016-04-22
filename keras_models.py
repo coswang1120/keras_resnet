@@ -3,26 +3,23 @@ from keras.layers.convolutional import Convolution2D, MaxPooling2D
 from keras.layers.core import Dense, Activation, Flatten, Reshape
 from keras.layers import merge, Input
 from keras.layers.normalization import BatchNormalization
-from keras.models import Sequential, Model
+from keras.models import Model
 from keras.optimizers import SGD
 from keras.regularizers import l2
-
+from keras.datasets import cifar10
 
 class ResidualModel(object):
-    """ Keras model and a method to create an arbitrary residual network."""
+    """Keras model and a method to create a residual network."""
 
-    def __init__(self, weight_decay=0.0001):
+    def __init__(self, weight_decay=0.0001, input_shape=(224, 224)):
         self.weight_decay = weight_decay
-        self.model = None
+        self.input_shape = input_shape
 
-    def base_convolution(self, input_layer, nb_filters, conv_shape=(3, 3),
-                         stride=(1, 1),
-                         relu_activation=True,
-                         **kwargs):
+    def base_convolution(self, input, nb_filters, conv_shape=(3, 3), stride=(1, 1), relu_activation=True, **kwargs):
         """Convolution2D -> BatchNormalization -> ReLU
 
         :param nb_filters: number of filters
-        :param input_layer: name of input
+        :param input: name of input
         """
 
         x = Convolution2D(nb_filter=nb_filters,
@@ -30,7 +27,7 @@ class ResidualModel(object):
                           W_regularizer=l2(self.weight_decay),
                           subsample=stride,
                           border_mode='same',
-                          **kwargs)(input_layer)
+                          **kwargs)(input)
 
         x = BatchNormalization()(x)
         if relu_activation:
@@ -54,21 +51,20 @@ class ResidualModel(object):
         """
 
         # First convolution
-        x = self.base_convolution(input_layer=input_layer, nb_filters=nb_filters,
+        x = self.base_convolution(input=input_layer, nb_filters=nb_filters,
                                   stride=first_stride)
         output_shape = x._shape_as_list()
 
         # Second Convolution, with Batch Normalization, without ReLU activation
-        x = self.base_convolution(input_layer=x, nb_filters=nb_filters, stride=(1, 1),
+        x = self.base_convolution(input=x, nb_filters=nb_filters, stride=(1, 1),
                                   relu_activation=False)
 
         # Add the short convolution, with Batch Normalization
         if first_stride == (2, 2):
             input_layer = Convolution2D(nb_filter=nb_filters//4,
-                                              nb_row=1,
-                                              nb_col=1,
-                                              W_regularizer=l2(self.weight_decay),
-                                              border_mode='same')(input_layer)
+                                        nb_row=1, nb_col=1,
+                                        W_regularizer=l2(self.weight_decay),
+                                        border_mode='same')(input_layer)
 
             input_layer = BatchNormalization()(x)
             input_layer = Reshape(output_shape[1:])(x)
@@ -98,6 +94,7 @@ class ResidualModel(object):
         -------
         self.graph : A new Keras graph
 
+        From the paper: input image 224x224 RGB image
 
         layer name      output size     18-layer        34-layer
         conv1           112x112      7x7, 64, stride 2 -> 3x3 max pool, stride 2
@@ -113,12 +110,10 @@ class ResidualModel(object):
 
         Reference: http://arxiv.org/abs/1512.03385
         """
-        imsize = 224
-        self.model = Sequential()
+
         # -------------------------- Layer Group 1 ----------------------------
-        input_image = Input(shape=(3, imsize, imsize))
-        x = self.base_convolution(input_layer=input_image,
-                                  nb_filters=initial_nb_filters,
+        input_image = Input(shape=(3, self.input_shape[0], self.input_shape))
+        x = self.base_convolution(input=input_image, nb_filters=initial_nb_filters,
                                   conv_shape=first_conv_shape,
                                   stride=(2, 2))
         # Output shape = (None,16,112,112)
@@ -130,22 +125,25 @@ class ResidualModel(object):
         # self.graph.nodes[output_name] = (None,initial_nb_filters,56,56)
         # output size = 14x14
         # -------------------------- Layer Group 3 ----------------------------
-        x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters*2, first_stride=(2, 2))
-        for i in range(1, nb_blocks[2]):
-            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 2)
+        x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters*2,
+                                first_stride=(2, 2))
+        for _ in range(1, nb_blocks[2]):
+            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters*2)
         # -------------------------- Layer Group 4 ----------------------------
-        x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 4,
-                                          first_stride=(2, 2))
-        for i in range(1, nb_blocks[3]):
-            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 4)
+        x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters*4,
+                                first_stride=(2, 2))
+        for _ in range(1, nb_blocks[3]):
+            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters*4)
         # output size = 14x14
         # -------------------------- Layer Group 5 ----------------------------
         x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 8,
-                                          first_stride=(2, 2))
-        for i in range(1, nb_blocks[4]):
-            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters * 8)
+                                first_stride=(2, 2))
+        for _ in range(1, nb_blocks[4]):
+            x = self.residual_block(input_layer=x, nb_filters=initial_nb_filters*8)
         # output size = 7x7
-        x = AveragePooling2D(pool_size=(7, 7), border_mode='same')(x)
+
+        pool_size = x.get_shape().as_list()[-2:]
+        x = AveragePooling2D(pool_size=tuple(pool_size), border_mode='same')(x)
         x = Flatten()(x)
         output_tensor = Dense(9, activation='sigmoid')(x)
 
@@ -158,5 +156,6 @@ if __name__ == '__main__':
 
     model = Model(input=input_tensor, output=output_tensor)
     sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
-    model.compile(optimizer=sgd, loss='binary_crossentropy')
-    model.summary()
+    model.compile(optimizer=sgd, loss='categorical_crossentropy')
+
+    (X_train, y_train), (X_test, y_test) = cifar10.load_data()
