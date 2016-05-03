@@ -1,104 +1,11 @@
-from __future__ import division
-from keras.layers.convolutional import AveragePooling2D
-from keras.layers.convolutional import Convolution2D, MaxPooling2D
-from keras.layers.core import Dense, Activation, Flatten, Reshape
-from keras.layers import merge, Input
-from keras.layers.normalization import BatchNormalization
-from keras.models import Model
-from keras.optimizers import SGD
-from keras.regularizers import l2
-from keras.datasets import cifar10
-from keras.utils import np_utils
-
-"""Keras model and a method to create a residual network."""
-
-weight_decay = 0.0001
-input_shape = (32, 32)
-
-
-def base_convolution(input, nb_filters, conv_shape=(3, 3), stride=(1, 1),
-                     relu_activation=True, **kwargs):
-    """Convolution2D -> BatchNormalization -> ReLU
-
-    :param nb_filters: number of filters
-    :param input: name of input
-    """
-
-    x = Convolution2D(nb_filter=nb_filters,
-                      nb_row=conv_shape[0], nb_col=conv_shape[1],
-                      W_regularizer=l2(weight_decay),
-                      subsample=stride,
-                      border_mode='same',
-                      **kwargs)(input)
-
-    x = BatchNormalization()(x)
-    if relu_activation:
-        x = Activation('relu')(x)
-
-    return x
-
-
-def shortcut(input_layer, nb_filters, output_shape):
-    x = Convolution2D(nb_filter=nb_filters // 4,
-                      nb_row=1, nb_col=1,
-                      W_regularizer=l2(weight_decay),
-                      border_mode='same')(input_layer)
-
-    x = BatchNormalization()(x)
-    x = Reshape(output_shape[1:])(x)
-    return x
-
-
-def residual_block(input_layer, nb_filters, first_stride=(1, 1)):
-    """Add a residual building block
-
-    A residual block consists of 2 base convolutions with a short/identity
-    connection between the input and output activation
-
-    Parameters
-    ----------
-    input_layer : name of input node
-    nb_filters : int
-
-    Returns
-    -------
-    output_name : name of output node, string
-    """
-
-    # First convolution
-    x = base_convolution(input=input_layer, nb_filters=nb_filters,
-                         stride=first_stride)
-    output_shape = x.get_shape().as_list()
-
-    # Second Convolution, with Batch Normalization, without ReLU activation
-    x = base_convolution(input=x, nb_filters=nb_filters, stride=(1, 1),
-                         relu_activation=False)
-
-    # Add the short convolution, with Batch Normalization
-    if first_stride == (2, 2):
-        input_layer = shortcut(input_layer, nb_filters, output_shape)
-
-    x = merge(inputs=[x, input_layer], mode='sum')
-    x = Activation('relu')(x)
-
-    return x
-
-
-def stack_units(block_unit, input_layer, nb_blocks, stride=1):
-    x = residual_block(input_layer=input_layer, nb_filters=initial_nb_filters*4,
-                       first_stride=(2, 2))
-
-    for _ in range(1, nb_blocks[3]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters*4)
-
-    return x
+from keras_models import base_convolution, residual_block
 
 
 def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
                            input_shape=(3, 224, 224),
                            initial_nb_filters=64,
                            first_conv_shape=(7, 7),
-                           first_stride=(1,1)):
+                           first_stride=(1, 1)):
     """Construct a residual convolutional network graph from scratch.
 
     Parameters
@@ -158,7 +65,7 @@ def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
         x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 4)
     # output size = 14x14
     # -------------------------- Layer Group 5 ----------------------------
-    x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 8,
+    x = residual_block(input_layer=x, nb_filters=initial_nb_filters*8,
                        first_stride=(2, 2))
     for _ in range(1, nb_blocks[4]):
         x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 8)
@@ -167,18 +74,18 @@ def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
     pool_size = x.get_shape().as_list()[-2:]
     x = AveragePooling2D(pool_size=tuple(pool_size), border_mode='same')(x)
     x = Flatten()(x)
-    output_tensor = Dense(10, activation='sigmoid')(x)
+    output_tensor = Dense(1000, activation='softmax')(x)
 
     return input_image, output_tensor
 
 
 if __name__ == '__main__':
-    nb_classes = 10
-    input_tensor, output_tensor = build_residual_network(initial_nb_filters=16,
+    nb_classes = 1000
+    input_tensor, output_tensor = build_residual_network(initial_nb_filters=64,
                                                          nb_blocks=[1, 9, 9, 9, 9],
-                                                         first_conv_shape=(3,3),
-                                                         first_stride=(1,1),
-                                                         input_shape=(3,32,32))
+                                                         first_conv_shape=(7, 7),
+                                                         first_stride=(2, 2),
+                                                         input_shape=(3, 224, 224))
 
     model = Model(input=input_tensor, output=output_tensor)
     sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
@@ -200,5 +107,4 @@ if __name__ == '__main__':
 
     model.fit(X_train, y_train,
               validation_data=(X_test, y_test),
-              batch_size=128)
-
+              batch_size=256)

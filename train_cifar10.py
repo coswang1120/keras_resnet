@@ -138,36 +138,29 @@ def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
     x = base_convolution(input=input_image, nb_filters=initial_nb_filters,
                          conv_shape=first_conv_shape,
                          stride=first_stride)
-    # Output shape = (None,16,112,112)
-    # x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode='same')(x)
-    # Output shape = (None,initial_nb_filters,56,56)
+    # Output size = 32x32
     # -------------------------- Layer Group 2 ----------------------------
     for i in range(1, nb_blocks[1] + 1):
         x = residual_block(input_layer=x, nb_filters=initial_nb_filters)
-    # self.graph.nodes[output_name] = (None,initial_nb_filters,56,56)
-    # output size = 14x14
+    # Output size = 32x32
     # -------------------------- Layer Group 3 ----------------------------
     x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 2,
                        first_stride=(2, 2))
     for _ in range(1, nb_blocks[2]):
         x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 2)
+    # output size = 16x16
+
     # -------------------------- Layer Group 4 ----------------------------
     x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 4,
                        first_stride=(2, 2))
     for _ in range(1, nb_blocks[3]):
         x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 4)
-    # output size = 14x14
-    # -------------------------- Layer Group 5 ----------------------------
-    x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 8,
-                       first_stride=(2, 2))
-    for _ in range(1, nb_blocks[4]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 8)
-    # output size = 7x7
+    # output size = 8x8
 
     pool_size = x.get_shape().as_list()[-2:]
     x = AveragePooling2D(pool_size=tuple(pool_size), border_mode='same')(x)
     x = Flatten()(x)
-    output_tensor = Dense(10, activation='sigmoid')(x)
+    output_tensor = Dense(10, activation='softmax')(x)
 
     return input_image, output_tensor
 
@@ -201,4 +194,3 @@ if __name__ == '__main__':
     model.fit(X_train, y_train,
               validation_data=(X_test, y_test),
               batch_size=128)
-
