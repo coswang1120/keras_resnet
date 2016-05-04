@@ -67,7 +67,7 @@ def build_residual_network(nb_blocks=[1, 6, 6, 6],
     # output size = 8x8
 
     pool_size = x._keras_shape[-2:]
-    x = AveragePooling2D(pool_size=tuple(pool_size), border_mode='same')(x)
+    x = AveragePooling2D(pool_size=tuple(pool_size))(x)
     x = Flatten()(x)
     output_tensor = Dense(10, activation='softmax')(x)
 
@@ -77,7 +77,7 @@ def build_residual_network(nb_blocks=[1, 6, 6, 6],
 if __name__ == '__main__':
     nb_classes = 10
     input_tensor, output_tensor = build_residual_network(initial_nb_filters=16,
-                                                         nb_blocks=[1, 3, 3, 3],
+                                                         nb_blocks=[1, 2, 2, 2],
                                                          first_conv_shape=(3,3),
                                                          first_stride=(1,1),
                                                          input_shape=(3,32,32))
@@ -100,6 +100,6 @@ if __name__ == '__main__':
     X_train /= 255
     X_test /= 255
 
-    model.fit(X_train, y_train,
-              validation_data=(X_test, y_test),
-              batch_size=128)
+    history = model.fit(X_train, y_train,
+                        validation_data=(X_test, y_test),
+                        batch_size=128)

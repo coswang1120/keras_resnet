@@ -40,11 +40,13 @@ def base_convolution(input, nb_filters, conv_shape=(3, 3), stride=(1, 1),
 
 
 def shortcut(input_layer, nb_filters, output_shape, zeros_upsample=False):
+    # TODO: Figure out why zeros_upsample doesn't work in Theano
     if zeros_upsample:
         x = AveragePooling2D(pool_size=(1,1),
                              strides=(2,2),
                              border_mode='same')(input_layer)
-        x = merge(inputs=[x, x*0], mode='concat', concat_axis=1)
+        # TODO: merge(x, x*0)
+        x = merge(inputs=[x, x], mode='concat', concat_axis=1)
     else:
         x = Convolution2D(nb_filter=nb_filters//4,
                           nb_row=1, nb_col=1,
@@ -144,7 +146,7 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
                          conv_shape=first_conv_shape,
                          stride=first_stride)
     # Output shape = (None,16,112,112)
-    # x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode='same')(x)
+    x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode='same')(x)
     # Output shape = (None,initial_nb_filters,56,56)
     # -------------------------- Layer Group 2 ----------------------------
     for i in range(1, nb_blocks[1] + 1):
