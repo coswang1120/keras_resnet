@@ -1,6 +1,6 @@
 from __future__ import division
 from keras.layers.convolutional import AveragePooling2D
-from keras.layers.convolutional import Convolution2D, MaxPooling2D
+from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2D
 from keras.layers.core import Dense, Activation, Flatten, Reshape
 from keras.layers import merge, Input
 from keras.layers.normalization import BatchNormalization
@@ -29,6 +29,7 @@ def base_convolution(input, nb_filters, conv_shape=(3, 3), stride=(1, 1),
                       W_regularizer=l2(weight_decay),
                       subsample=stride,
                       border_mode='same',
+                      init='he_normal',
                       **kwargs)(input)
 
     x = BatchNormalization()(x)
@@ -38,18 +39,23 @@ def base_convolution(input, nb_filters, conv_shape=(3, 3), stride=(1, 1),
     return x
 
 
-def shortcut(input_layer, nb_filters, output_shape):
-    x = Convolution2D(nb_filter=nb_filters // 4,
-                      nb_row=1, nb_col=1,
-                      W_regularizer=l2(weight_decay),
-                      border_mode='same')(input_layer)
-
-    x = BatchNormalization()(x)
-    x = Reshape(output_shape[1:])(x)
+def shortcut(input_layer, nb_filters, output_shape, zeros_upsample=False):
+    if zeros_upsample:
+        x = AveragePooling2D(pool_size=(1,1),
+                             strides=(2,2),
+                             border_mode='same')(input_layer)
+        x = merge(inputs=[x, x*0], mode='concat', concat_axis=1)
+    else:
+        x = Convolution2D(nb_filter=nb_filters//4,
+                          nb_row=1, nb_col=1,
+                          W_regularizer=l2(weight_decay),
+                          border_mode='same')(input_layer)
+        x = BatchNormalization()(x)
+        x = Reshape(output_shape[1:])(x)
     return x
 
 
-def residual_block(input_layer, nb_filters, first_stride=(1, 1)):
+def basic_block(input_layer, nb_filters, first_stride=(1, 1)):
     """Add a residual building block
 
     A residual block consists of 2 base convolutions with a short/identity
@@ -68,7 +74,7 @@ def residual_block(input_layer, nb_filters, first_stride=(1, 1)):
     # First convolution
     x = base_convolution(input=input_layer, nb_filters=nb_filters,
                          stride=first_stride)
-    output_shape = x.get_shape().as_list()
+    output_shape = x._keras_shape
 
     # Second Convolution, with Batch Normalization, without ReLU activation
     x = base_convolution(input=x, nb_filters=nb_filters, stride=(1, 1),
@@ -84,21 +90,20 @@ def residual_block(input_layer, nb_filters, first_stride=(1, 1)):
     return x
 
 
-def stack_units(block_unit, input_layer, nb_blocks, stride=1):
-    x = residual_block(input_layer=input_layer, nb_filters=initial_nb_filters*4,
-                       first_stride=(2, 2))
+def stack_units(block_unit, input_layer, nb_blocks, nb_filters, stride=(1, 1)):
+    x = block_unit(input_layer=input_layer, nb_filters=nb_filters,
+                   first_stride=stride)
 
-    for _ in range(1, nb_blocks[3]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters*4)
-
+    for _ in range(nb_blocks-1):
+        x = block_unit(input_layer=x, nb_filters=nb_filters)
     return x
 
 
-def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
-                           input_shape=(3, 224, 224),
-                           initial_nb_filters=64,
-                           first_conv_shape=(7, 7),
-                           first_stride=(1,1)):
+def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
+                            input_shape=(3, 224, 224),
+                            initial_nb_filters=64,
+                            first_conv_shape=(7, 7),
+                            first_stride=(1,1)):
     """Construct a residual convolutional network graph from scratch.
 
     Parameters
@@ -143,25 +148,25 @@ def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
     # Output shape = (None,initial_nb_filters,56,56)
     # -------------------------- Layer Group 2 ----------------------------
     for i in range(1, nb_blocks[1] + 1):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters)
+        x = basic_block(input_layer=x, nb_filters=initial_nb_filters)
     # self.graph.nodes[output_name] = (None,initial_nb_filters,56,56)
     # output size = 14x14
     # -------------------------- Layer Group 3 ----------------------------
-    x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 2,
-                       first_stride=(2, 2))
+    x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 2,
+                    first_stride=(2, 2))
     for _ in range(1, nb_blocks[2]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 2)
+        x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 2)
     # -------------------------- Layer Group 4 ----------------------------
-    x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 4,
-                       first_stride=(2, 2))
+    x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 4,
+                    first_stride=(2, 2))
     for _ in range(1, nb_blocks[3]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 4)
+        x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 4)
     # output size = 14x14
     # -------------------------- Layer Group 5 ----------------------------
-    x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 8,
-                       first_stride=(2, 2))
+    x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 8,
+                    first_stride=(2, 2))
     for _ in range(1, nb_blocks[4]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 8)
+        x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 8)
     # output size = 7x7
 
     pool_size = x.get_shape().as_list()[-2:]
@@ -174,11 +179,11 @@ def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
 
 if __name__ == '__main__':
     nb_classes = 10
-    input_tensor, output_tensor = build_residual_network(initial_nb_filters=16,
-                                                         nb_blocks=[1, 9, 9, 9, 9],
-                                                         first_conv_shape=(3,3),
-                                                         first_stride=(1,1),
-                                                         input_shape=(3,32,32))
+    input_tensor, output_tensor = build_residual_imagenet(initial_nb_filters=16,
+                                                          nb_blocks=[1, 9, 9, 9, 9],
+                                                          first_conv_shape=(3,3),
+                                                          first_stride=(1,1),
+                                                          input_shape=(3,32,32))
 
     model = Model(input=input_tensor, output=output_tensor)
     sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)

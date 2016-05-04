@@ -1,4 +1,4 @@
-from keras_models import base_convolution, residual_block
+from keras_models import base_convolution, basic_block
 
 
 def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
@@ -50,25 +50,25 @@ def build_residual_network(nb_blocks=[1, 3, 4, 6, 3],
     # Output shape = (None,initial_nb_filters,56,56)
     # -------------------------- Layer Group 2 ----------------------------
     for i in range(1, nb_blocks[1] + 1):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters)
+        x = basic_block(input_layer=x, nb_filters=initial_nb_filters)
     # self.graph.nodes[output_name] = (None,initial_nb_filters,56,56)
     # output size = 14x14
     # -------------------------- Layer Group 3 ----------------------------
-    x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 2,
-                       first_stride=(2, 2))
+    x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 2,
+                    first_stride=(2, 2))
     for _ in range(1, nb_blocks[2]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 2)
+        x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 2)
     # -------------------------- Layer Group 4 ----------------------------
-    x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 4,
-                       first_stride=(2, 2))
+    x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 4,
+                    first_stride=(2, 2))
     for _ in range(1, nb_blocks[3]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 4)
+        x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 4)
     # output size = 14x14
     # -------------------------- Layer Group 5 ----------------------------
-    x = residual_block(input_layer=x, nb_filters=initial_nb_filters*8,
-                       first_stride=(2, 2))
+    x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 8,
+                    first_stride=(2, 2))
     for _ in range(1, nb_blocks[4]):
-        x = residual_block(input_layer=x, nb_filters=initial_nb_filters * 8)
+        x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 8)
     # output size = 7x7
 
     pool_size = x.get_shape().as_list()[-2:]
