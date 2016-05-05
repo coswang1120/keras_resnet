@@ -11,6 +11,9 @@ Where the paper is unclear I follow the open source [Torch resnet](https://githu
 The full ImageNet model is there too but if you want to train it that's your problem.
 
 TODOs:
+
 1. Bottleneck architecture
+
 2. Compare CIFAR10 results with the results in the paper
+
 3. Fix ImageNet model
