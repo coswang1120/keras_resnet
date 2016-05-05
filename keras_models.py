@@ -1,32 +1,37 @@
 from __future__ import division
 from keras.layers.convolutional import AveragePooling2D
-from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2D
-from keras.layers.core import Dense, Activation, Flatten, Reshape
+from keras.layers.convolutional import Convolution2D, MaxPooling2D
+from keras.layers.core import Dense, Activation, Flatten, Reshape, Lambda
 from keras.layers import merge, Input
 from keras.layers.normalization import BatchNormalization
 from keras.models import Model
 from keras.optimizers import SGD
 from keras.regularizers import l2
-from keras.datasets import cifar10
-from keras.utils import np_utils
+from keras import backend as K
 
-"""Keras model and a method to create a residual network."""
 
-weight_decay = 0.0001
-input_shape = (32, 32)
+WEIGHT_DECAY = 0.0001
+
+
+def zeropad(x):
+    y = K.zeros_like(x)
+    return K.concatenate([x, y], axis=1)
+
+
+def zeropad_output_shape(input_shape):
+    shape = list(input_shape)
+    assert len(shape) == 4  # only valid for 2D tensors
+    shape[1] *= 2
+    return tuple(shape)
 
 
 def base_convolution(input, nb_filters, conv_shape=(3, 3), stride=(1, 1),
                      relu_activation=True, **kwargs):
-    """Convolution2D -> BatchNormalization -> ReLU
-
-    :param nb_filters: number of filters
-    :param input: name of input
-    """
+    """Convolution2D -> BatchNormalization -> ReLU"""
 
     x = Convolution2D(nb_filter=nb_filters,
                       nb_row=conv_shape[0], nb_col=conv_shape[1],
-                      W_regularizer=l2(weight_decay),
+                      W_regularizer=l2(WEIGHT_DECAY),
                       subsample=stride,
                       border_mode='same',
                       init='he_normal',
@@ -39,18 +44,33 @@ def base_convolution(input, nb_filters, conv_shape=(3, 3), stride=(1, 1),
     return x
 
 
-def shortcut(input_layer, nb_filters, output_shape, zeros_upsample=False):
-    # TODO: Figure out why zeros_upsample doesn't work in Theano
+def shortcut(input_layer, nb_filters, output_shape, zeros_upsample=True):
+    """Used to increase dimensions, ie 16 filters to 32 filters.
+
+    Parameters
+    ----------
+    zeros_upsample : Bool  (for now)
+
+        A: identity shortcut with zero-padding for increasing dimensions. This is used for all CIFAR-10 experiments.
+        B: identity shortcut with 1x1 convolutions for increasing dimesions. This is used for most ImageNet experiments.
+        C: 1x1 convolutions for all shortcut connections.
+    """
     if zeros_upsample:
-        x = AveragePooling2D(pool_size=(1,1),
-                             strides=(2,2),
-                             border_mode='same')(input_layer)
-        # TODO: merge(x, x*0)
-        x = merge(inputs=[x, x], mode='concat', concat_axis=1)
+        # TODO: Figure out why zeros_upsample doesn't work in Theano
+        # TODO: Change to A/B options
+        # Option A: pad with zeros
+        x = MaxPooling2D(pool_size=(1,1),
+                         strides=(2,2),
+                         border_mode='same')(input_layer)
+        x = Lambda(zeropad, output_shape=zeropad_output_shape)(x)
     else:
+        # My style: Take a 1x1 convolution over entire image with 1/4 the
+        # filters and reshapes to the desired output shape with 2x the
+        # number of filters. Works with old versions of TensorFlow where
+        # the stride cannot be larger than the filter size.
         x = Convolution2D(nb_filter=nb_filters//4,
                           nb_row=1, nb_col=1,
-                          W_regularizer=l2(weight_decay),
+                          W_regularizer=l2(WEIGHT_DECAY),
                           border_mode='same')(input_layer)
         x = BatchNormalization()(x)
         x = Reshape(output_shape[1:])(x)
@@ -104,9 +124,8 @@ def stack_units(block_unit, input_layer, nb_blocks, nb_filters, stride=(1, 1)):
 def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
                             input_shape=(3, 224, 224),
                             initial_nb_filters=64,
-                            first_conv_shape=(7, 7),
-                            first_stride=(1,1)):
-    """Construct a residual convolutional network graph from scratch.
+                            first_conv_shape=(7, 7)):
+    """Construct a residual network with ImageNet architecture.
 
     Parameters
     ----------
@@ -116,12 +135,13 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
     initial_nb_filters : int, optional
        The initial number of filters to use. The number of filters is doubled
        for each layer.
-    first_conv_shape : tuple of ints
+    first_conv_shape : tuple of 2 ints
        The shape of the first convolution, also known as the kernel size.
 
     Returns
     -------
-    self.graph : A new Keras graph
+    input_image, output : input tensor, output class probabilities
+
 
     From the paper: input image 224x224 RGB image
 
@@ -144,39 +164,41 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
     input_image = Input(shape=input_shape)
     x = base_convolution(input=input_image, nb_filters=initial_nb_filters,
                          conv_shape=first_conv_shape,
-                         stride=first_stride)
-    # Output shape = (None,16,112,112)
+                         stride=(2, 2))
+    # Output shape = (None,64,112,112)
     x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode='same')(x)
-    # Output shape = (None,initial_nb_filters,56,56)
+    # Output shape = (None,64,56,56)
+    # Output size = 56x56
     # -------------------------- Layer Group 2 ----------------------------
     for i in range(1, nb_blocks[1] + 1):
         x = basic_block(input_layer=x, nb_filters=initial_nb_filters)
-    # self.graph.nodes[output_name] = (None,initial_nb_filters,56,56)
-    # output size = 14x14
+    # Output size = 56x56
     # -------------------------- Layer Group 3 ----------------------------
     x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 2,
                     first_stride=(2, 2))
     for _ in range(1, nb_blocks[2]):
         x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 2)
+    # Output size = 28x28
     # -------------------------- Layer Group 4 ----------------------------
     x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 4,
                     first_stride=(2, 2))
     for _ in range(1, nb_blocks[3]):
         x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 4)
-    # output size = 14x14
+    # Output size = 14x14
     # -------------------------- Layer Group 5 ----------------------------
     x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 8,
                     first_stride=(2, 2))
     for _ in range(1, nb_blocks[4]):
         x = basic_block(input_layer=x, nb_filters=initial_nb_filters * 8)
-    # output size = 7x7
+    # Output size = 7x7
 
     pool_size = x.get_shape().as_list()[-2:]
     x = AveragePooling2D(pool_size=tuple(pool_size), border_mode='same')(x)
+    # Output size = 1x1
     x = Flatten()(x)
-    output_tensor = Dense(10, activation='sigmoid')(x)
+    output = Dense(10, activation='sigmoid')(x)
 
-    return input_image, output_tensor
+    return input_image, output
 
 
 if __name__ == '__main__':
@@ -184,28 +206,10 @@ if __name__ == '__main__':
     input_tensor, output_tensor = build_residual_imagenet(initial_nb_filters=16,
                                                           nb_blocks=[1, 9, 9, 9, 9],
                                                           first_conv_shape=(3,3),
-                                                          first_stride=(1,1),
                                                           input_shape=(3,32,32))
 
     model = Model(input=input_tensor, output=output_tensor)
     sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
     model.compile(optimizer=sgd, loss='categorical_crossentropy')
 
-    (X_train, y_train), (X_test, y_test) = cifar10.load_data()
-    print('X_train shape:', X_train.shape)
-    print(X_train.shape[0], 'train samples')
-    print(X_test.shape[0], 'test samples')
-
-    # convert class vectors to binary class matrices
-    y_train = np_utils.to_categorical(y_train, nb_classes)
-    y_test = np_utils.to_categorical(y_test, nb_classes)
-
-    X_train = X_train.astype('float32')
-    X_test = X_test.astype('float32')
-    X_train /= 255
-    X_test /= 255
-
-    model.fit(X_train, y_train,
-              validation_data=(X_test, y_test),
-              batch_size=128)
-
+    model.summary()

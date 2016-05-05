@@ -6,19 +6,13 @@ from keras.models import Model
 from keras.optimizers import SGD
 from keras.datasets import cifar10
 from keras.utils import np_utils
-
 from keras_models import base_convolution, basic_block, stack_units
 
-weight_decay = 0.0001
-input_shape = (32, 32)
 
-
-def build_residual_network(nb_blocks=[1, 6, 6, 6],
-                           input_shape=(3, 32, 32),
+def build_residual_network(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
                            initial_nb_filters=16,
-                           first_conv_shape=(3, 3),
-                           first_stride=(1, 1)):
-    """Construct a residual convolutional network model.
+                           first_conv_shape=(3, 3)):
+    """Construct a residual network model for CIFAR10.
 
     Parameters
     ----------
@@ -28,12 +22,12 @@ def build_residual_network(nb_blocks=[1, 6, 6, 6],
     initial_nb_filters : int, optional
        The initial number of filters to use. The number of filters is doubled
        for each layer.
-    first_conv_shape : tuple of ints
+    first_conv_shape : tuple of 2 ints
        The shape of the first convolution, also known as the kernel size.
 
     Returns
     -------
-    input_image, output_tensor : input tensor, output tensor
+    input_image, output : input tensor, output class probabilities
 
 
     From the paper: input image 32x32 RGB image
@@ -42,7 +36,7 @@ def build_residual_network(nb_blocks=[1, 6, 6, 6],
     conv2_x         32x32           3x3, 32, stride 2
     conv3_x         16x16           3x3, 32, stride 2
     conv4_x         8x8             8x8, average pool
-                    1x1             10-d fc, softmax
+    pool            1x1             10-d fc, softmax
 
     Reference: http://arxiv.org/abs/1512.03385
     """
@@ -50,41 +44,44 @@ def build_residual_network(nb_blocks=[1, 6, 6, 6],
     # -------------------------- Layer Group 1 ----------------------------
     input_image = Input(shape=input_shape)
     x = base_convolution(input=input_image, nb_filters=initial_nb_filters,
-                         conv_shape=first_conv_shape,
-                         stride=first_stride)
+                         conv_shape=first_conv_shape)
     # Output size = 32x32
     # -------------------------- Layer Group 2 ----------------------------
-    x = stack_units(block_unit=basic_block, input_layer=x, nb_blocks=nb_blocks[1],
+    x = stack_units(block_unit=basic_block, input_layer=x,
+                    nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters)
     # Output size = 32x32
     # -------------------------- Layer Group 3 ----------------------------
-    x = stack_units(block_unit=basic_block, input_layer=x, nb_blocks=nb_blocks[1],
+    x = stack_units(block_unit=basic_block, input_layer=x,
+                    nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters*2, stride=(2, 2))
-    # output size = 16x16
+    # Output size = 16x16
     # -------------------------- Layer Group 4 ----------------------------
-    x = stack_units(block_unit=basic_block, input_layer=x, nb_blocks=nb_blocks[1],
+    x = stack_units(block_unit=basic_block, input_layer=x,
+                    nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters*4, stride=(2, 2))
-    # output size = 8x8
+    # Output size = 8x8
 
     pool_size = x._keras_shape[-2:]
     x = AveragePooling2D(pool_size=tuple(pool_size))(x)
+    # Output size = 1x1
     x = Flatten()(x)
-    output_tensor = Dense(10, activation='softmax')(x)
+    output = Dense(10, activation='softmax')(x)
 
-    return input_image, output_tensor
+    return input_image, output
 
 
 if __name__ == '__main__':
     nb_classes = 10
     input_tensor, output_tensor = build_residual_network(initial_nb_filters=16,
-                                                         nb_blocks=[1, 2, 2, 2],
+                                                         nb_blocks=[1, 3, 3, 3],
                                                          first_conv_shape=(3,3),
-                                                         first_stride=(1,1),
                                                          input_shape=(3,32,32))
 
     model = Model(input=input_tensor, output=output_tensor)
     sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
-    model.compile(optimizer=sgd, loss='categorical_crossentropy')
+    model.compile(optimizer=sgd, loss='categorical_crossentropy',
+                  metrics=['accuracy'])
 
     (X_train, y_train), (X_test, y_test) = cifar10.load_data()
     print('X_train shape:', X_train.shape)
