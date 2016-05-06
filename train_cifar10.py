@@ -47,19 +47,18 @@ def build_residual_network(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
                          conv_shape=first_conv_shape)
     # Output size = 32x32
     # -------------------------- Layer Group 2 ----------------------------
-    x = stack_units(block_unit=basic_block, input_layer=x,
-                    nb_blocks=nb_blocks[1],
+    x = stack_units(input=x, block_unit=basic_block, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters)
     # Output size = 32x32
     # -------------------------- Layer Group 3 ----------------------------
-    x = stack_units(block_unit=basic_block, input_layer=x,
-                    nb_blocks=nb_blocks[1],
-                    nb_filters=initial_nb_filters*2, stride=(2, 2))
+    x = stack_units(input=x, block_unit=basic_block, nb_blocks=nb_blocks[1],
+                    nb_filters=initial_nb_filters * 2,
+                    stride=(2, 2))
     # Output size = 16x16
     # -------------------------- Layer Group 4 ----------------------------
-    x = stack_units(block_unit=basic_block, input_layer=x,
-                    nb_blocks=nb_blocks[1],
-                    nb_filters=initial_nb_filters*4, stride=(2, 2))
+    x = stack_units(input=x, block_unit=basic_block, nb_blocks=nb_blocks[1],
+                    nb_filters=initial_nb_filters * 4,
+                    stride=(2, 2))
     # Output size = 8x8
 
     pool_size = x._keras_shape[-2:]
@@ -74,7 +73,7 @@ def build_residual_network(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
 if __name__ == '__main__':
     nb_classes = 10
     input_tensor, output_tensor = build_residual_network(initial_nb_filters=16,
-                                                         nb_blocks=[1, 3, 3, 3],
+                                                         nb_blocks=[1, 5, 5, 5],
                                                          first_conv_shape=(3,3),
                                                          input_shape=(3,32,32))
 
@@ -97,6 +96,8 @@ if __name__ == '__main__':
     X_train /= 255
     X_test /= 255
 
-    history = model.fit(X_train, y_train,
-                        validation_data=(X_test, y_test),
-                        batch_size=128)
+    # history = model.fit(X_train, y_train,
+    #                     validation_data=(X_test, y_test),
+    #                     batch_size=128)
+
+    model.summary()
