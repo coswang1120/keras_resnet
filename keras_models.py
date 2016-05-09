@@ -13,6 +13,7 @@ from keras import backend as K
 WEIGHT_DECAY = 0.0001
 SHORTCUT_OPTION = 'A'
 
+
 def zeropad(x):
     y = K.zeros_like(x)
     return K.concatenate([x, y], axis=1)
@@ -20,7 +21,7 @@ def zeropad(x):
 
 def zeropad_output_shape(input_shape):
     shape = list(input_shape)
-    assert len(shape) == 4  # only valid for 2D tensors
+    assert len(shape) == 4  # only valid for 4D tensors
     shape[1] *= 2
     return tuple(shape)
 
@@ -138,6 +139,7 @@ def stack_units(input, block_unit, nb_blocks, nb_filters, stride=(1, 1)):
 
     for _ in range(nb_blocks-1):
         x = block_unit(input=x, nb_filters=nb_filters)
+
     return x
 
 
