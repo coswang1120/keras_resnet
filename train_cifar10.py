@@ -6,7 +6,7 @@ from keras.models import Model
 from keras.optimizers import SGD
 from keras.datasets import cifar10
 from keras.utils import np_utils
-from keras_models import base_convolution, basic_block, stack_units
+from resnet_utils import base_convolution, basic_block, stack_units
 
 
 def build_residual_network(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
