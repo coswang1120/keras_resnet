@@ -82,7 +82,7 @@ def shortcut(input_layer, nb_filters, output_shape=None,
     return x
 
 
-def basic_block(input_layer, nb_filters, first_stride=(1, 1)):
+def basic_block(input, nb_filters, first_stride=(1, 1)):
     """Add a residual building block
 
     A residual block consists of 2 base convolutions with a short/identity
@@ -90,7 +90,7 @@ def basic_block(input_layer, nb_filters, first_stride=(1, 1)):
     """
 
     # First convolution
-    x = base_convolution(input=input_layer, nb_filters=nb_filters,
+    x = base_convolution(input=input, nb_filters=nb_filters,
                          stride=first_stride)
     output_shape = x._keras_shape
 
@@ -100,9 +100,9 @@ def basic_block(input_layer, nb_filters, first_stride=(1, 1)):
 
     # Add the short convolution, with Batch Normalization
     if first_stride == (2, 2):
-        input_layer = shortcut(input_layer, nb_filters, output_shape)
+        input = shortcut(input, nb_filters, output_shape)
 
-    x = merge(inputs=[x, input_layer], mode='sum')
+    x = merge(inputs=[x, input], mode='sum')
     x = Activation('relu')(x)
 
     return x

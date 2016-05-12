@@ -9,9 +9,10 @@ from keras.utils import np_utils
 from resnet_utils import base_convolution, basic_block, stack_units
 
 
-def build_residual_network(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
-                           initial_nb_filters=16,
-                           first_conv_shape=(3, 3)):
+def build_cifar_model(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
+                      initial_nb_filters=16,
+                      first_conv_shape=(3, 3),
+                      nb_classes=10):
     """Construct a residual network model for CIFAR10.
 
     Parameters
@@ -65,39 +66,40 @@ def build_residual_network(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
     x = AveragePooling2D(pool_size=tuple(pool_size))(x)
     # Output size = 1x1
     x = Flatten()(x)
-    output = Dense(10, activation='softmax')(x)
+    output = Dense(nb_classes, activation='softmax')(x)
 
     return input_image, output
 
 
 if __name__ == '__main__':
-    nb_classes = 10
-    input_tensor, output_tensor = build_residual_network(initial_nb_filters=16,
-                                                         nb_blocks=[1, 5, 5, 5],
-                                                         first_conv_shape=(3,3),
-                                                         input_shape=(3,32,32))
+    NB_CLASSES = 10
+    input_tensor, output_tensor = build_cifar_model(initial_nb_filters=16,
+                                                    nb_blocks=[1, 5, 5, 5],
+                                                    first_conv_shape=(3, 3),
+                                                    input_shape=(3, 32, 32),
+                                                    nb_classes=NB_CLASSES)
 
     model = Model(input=input_tensor, output=output_tensor)
     sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
     model.compile(optimizer=sgd, loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
-    (X_train, y_train), (X_test, y_test) = cifar10.load_data()
-    print('X_train shape:', X_train.shape)
-    print(X_train.shape[0], 'train samples')
-    print(X_test.shape[0], 'test samples')
+    model.summary()
 
-    # convert class vectors to binary class matrices
-    y_train = np_utils.to_categorical(y_train, nb_classes)
-    y_test = np_utils.to_categorical(y_test, nb_classes)
-
-    X_train = X_train.astype('float32')
-    X_test = X_test.astype('float32')
-    X_train /= 255
-    X_test /= 255
-
+    # (X_train, y_train), (X_test, y_test) = cifar10.load_data()
+    # print('X_train shape:', X_train.shape)
+    # print(X_train.shape[0], 'train samples')
+    # print(X_test.shape[0], 'test samples')
+    #
+    # # convert class vectors to binary class matrices
+    # y_train = np_utils.to_categorical(y_train, NB_CLASSES)
+    # y_test = np_utils.to_categorical(y_test, NB_CLASSES)
+    #
+    # X_train = X_train.astype('float32')
+    # X_test = X_test.astype('float32')
+    # X_train /= 255
+    # X_test /= 255
+    #
     # history = model.fit(X_train, y_train,
     #                     validation_data=(X_test, y_test),
     #                     batch_size=128)
-
-    model.summary()
