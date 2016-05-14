@@ -9,7 +9,6 @@ from keras.optimizers import SGD
 from keras.regularizers import l2
 from keras import backend as K
 
-
 WEIGHT_DECAY = 0.0001
 SHORTCUT_OPTION = 'A'
 
@@ -60,14 +59,14 @@ def shortcut(input_layer, nb_filters, output_shape=None,
     if upsample_method == 'A':
         # TODO: Figure out why zeros_upsample doesn't work in Theano
         # Option A: pad with zeros
-        x = MaxPooling2D(pool_size=(1,1),
-                         strides=(2,2),
+        x = MaxPooling2D(pool_size=(1, 1),
+                         strides=(2, 2),
                          border_mode='same')(input_layer)
         x = Lambda(zeropad, output_shape=zeropad_output_shape)(x)
     elif upsample_method == 'B':
         # B: pad with zeros
-        x = Convolution2D(nb_filter=nb_filters, nb_col=1,nb_row=1,
-                          subsample=(2,2),
+        x = Convolution2D(nb_filter=nb_filters, nb_col=1, nb_row=1,
+                          subsample=(2, 2),
                           border_mode='same')(input_layer)
     else:
         # My style: Take a 1x1 convolution over entire image with 1/4 the
@@ -120,11 +119,11 @@ def bottleneck_block(input, nb_filters, first_stride=(1, 1)):
 
     x = base_convolution(input=x, nb_filters=nb_filters, conv_shape=(3, 3))
 
-    x = base_convolution(input=x, nb_filters=nb_filters*4, stride=(1, 1),
+    x = base_convolution(input=x, nb_filters=nb_filters * 4, stride=(1, 1),
                          conv_shape=(1, 1),
                          relu_activation=False)
-    if first_stride == (2,2):
-        input = shortcut(input_layer=input, nb_filters=nb_filters*4,
+    if first_stride == (2, 2):
+        input = shortcut(input_layer=input, nb_filters=nb_filters * 4,
                          upsample_method='B')
 
     x = merge(inputs=[x, input], mode='sum')
@@ -137,7 +136,7 @@ def stack_units(input, block_unit, nb_blocks, nb_filters, stride=(1, 1)):
     x = block_unit(input=input, nb_filters=nb_filters,
                    first_stride=stride)
 
-    for _ in range(nb_blocks-1):
+    for _ in range(nb_blocks - 1):
         x = block_unit(input=x, nb_filters=nb_filters)
 
     return x
@@ -195,7 +194,7 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
     # Output shape = (None,64,112,112)
     x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode='same')(x)
 
-    x = base_convolution(input=x, nb_filters=initial_nb_filters*4,
+    x = base_convolution(input=x, nb_filters=initial_nb_filters * 4,
                          conv_shape=(1, 1),
                          stride=(1, 1),
                          relu_activation=False)
@@ -206,24 +205,24 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
                     nb_filters=initial_nb_filters,
                     stride=(1, 1))
     # Output size = 56x56
-    x = base_convolution(input=x, nb_filters=initial_nb_filters*4,
+    x = base_convolution(input=x, nb_filters=initial_nb_filters * 4,
                          conv_shape=(1, 1),
                          stride=(1, 1),
                          relu_activation=False)
     # -------------------------- Layer Group 3 ----------------------------
     x = stack_units(input=x, block_unit=bottleneck_block, nb_blocks=nb_blocks[1],
-                    nb_filters=initial_nb_filters*2,
+                    nb_filters=initial_nb_filters * 2,
                     stride=(2, 2))
     # Output size = 28x28
 
     # -------------------------- Layer Group 4 ----------------------------
     x = stack_units(input=x, block_unit=bottleneck_block, nb_blocks=nb_blocks[1],
-                    nb_filters=initial_nb_filters*4,
+                    nb_filters=initial_nb_filters * 4,
                     stride=(2, 2))
     # Output size = 14x14
     # -------------------------- Layer Group 5 ----------------------------
     x = stack_units(input=x, block_unit=bottleneck_block, nb_blocks=nb_blocks[1],
-                    nb_filters=initial_nb_filters*8,
+                    nb_filters=initial_nb_filters * 8,
                     stride=(2, 2))
     # Output size = 7x7
 
