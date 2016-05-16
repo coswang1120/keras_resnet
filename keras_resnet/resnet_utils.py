@@ -10,7 +10,6 @@ from keras.regularizers import l2
 from keras import backend as K
 
 WEIGHT_DECAY = 0.0001
-SHORTCUT_OPTION = 'B'
 
 
 def zeropad(x):
@@ -26,7 +25,7 @@ def zeropad_output_shape(input_shape):
 
 
 def featuremap_reduction_shortcut(input_layer, nb_filters,
-                                  option=SHORTCUT_OPTION):
+                                  option='B'):
     """Used to increase dimensions and reduce feature map size
 
     For example: shortcut(?, 16, 32, 32) -> (?, 32, 16, 16)
@@ -47,9 +46,11 @@ def featuremap_reduction_shortcut(input_layer, nb_filters,
                          border_mode='same')(input_layer)
         x = Lambda(zeropad, output_shape=zeropad_output_shape)(x)
     elif option == 'B':
+        x = BatchNormalization()(input_layer)
         x = Convolution2D(nb_filter=nb_filters, nb_col=1, nb_row=1,
                           subsample=(2, 2),
-                          border_mode='same')(input_layer)
+                          border_mode='same',
+                          bias=False)(x)
     else:
         # My style: Take a 1x1 convolution over entire image with 1/4 the
         # filters and reshapes to the desired output shape with 2x the
@@ -95,30 +96,37 @@ def basic_unit(input, nb_filters, first_stride=(1, 1)):
 
 
 def bottleneck_unit(input, nb_filters, first_stride=(1, 1)):
-    """The bottleneck unit comprising 1x1 -> 3x3 -> 1x1 convolutions"""
+    """The bottleneck unit comprising 1x1 -> 3x3 -> 1x1 convolutions
+
+    This is the new pre-activation residual unit, Batch Norm -> ReLU -> Conv
+    http://arxiv.org/abs/1603.05027
+    """
+    x = BatchNormalization()(input)
+    x = Activation('relu')(x)
     x = Convolution2D(nb_filters, 1, 1,
                       W_regularizer=l2(WEIGHT_DECAY),
                       subsample=first_stride,
                       border_mode='same',
-                      init='he_normal')(input)
+                      init='he_normal')(x)
+
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
-
     x = Convolution2D(nb_filters, 3, 3,
                       W_regularizer=l2(WEIGHT_DECAY),
                       border_mode='same',
                       init='he_normal')(x)
+
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
-
     x = Convolution2D(4*nb_filters, 1, 1,
                       W_regularizer=l2(WEIGHT_DECAY),
                       border_mode='same',
                       init='he_normal')(x)
-    x = BatchNormalization()(x)
 
     if first_stride == (2, 2):
-        input = featuremap_reduction_shortcut(input_layer=input, nb_filters=nb_filters * 4, option='B')
+        input = featuremap_reduction_shortcut(input_layer=input,
+                                              nb_filters=4*nb_filters,
+                                              option='B')
 
     x = merge(inputs=[x, input], mode='sum')
     x = Activation('relu')(x)
