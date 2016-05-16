@@ -10,7 +10,7 @@ from keras.regularizers import l2
 from keras import backend as K
 
 WEIGHT_DECAY = 0.0001
-SHORTCUT_OPTION = 'A'
+SHORTCUT_OPTION = 'B'
 
 
 def zeropad(x):
@@ -25,46 +25,28 @@ def zeropad_output_shape(input_shape):
     return tuple(shape)
 
 
-def base_convolution(input, nb_filters, conv_shape=(3, 3), stride=(1, 1),
-                     relu_activation=True, **kwargs):
-    """Convolution2D -> BatchNormalization -> ReLU"""
+def featuremap_reduction_shortcut(input_layer, nb_filters,
+                                  option=SHORTCUT_OPTION):
+    """Used to increase dimensions and reduce feature map size
 
-    x = Convolution2D(nb_filter=nb_filters,
-                      nb_row=conv_shape[0], nb_col=conv_shape[1],
-                      W_regularizer=l2(WEIGHT_DECAY),
-                      subsample=stride,
-                      border_mode='same',
-                      init='he_normal',
-                      **kwargs)(input)
-
-    x = BatchNormalization()(x)
-    if relu_activation:
-        x = Activation('relu')(x)
-
-    return x
-
-
-def shortcut(input_layer, nb_filters, output_shape=None,
-             upsample_method=SHORTCUT_OPTION):
-    """Used to increase dimensions, ie 16 filters to 32 filters.
+    For example: shortcut(?, 16, 32, 32) -> (?, 32, 16, 16)
 
     Parameters
     ----------
-    upsample_method : Bool  (for now)
+    option : 'A'/'B'
 
-        A: identity shortcut with zero-padding for increasing dimensions. This is used for all CIFAR-10 experiments.
-        B: identity shortcut with 1x1 convolutions for increasing dimensions. This is used for most ImageNet experiments.
-        C: 1x1 convolutions for all shortcut connections.
+        A: identity shortcut with zero-padding for increasing dimensions.
+           This is used for all CIFAR-10 experiments.
+        B: identity shortcut with 1x1 convolutions for increasing dimensions
+           This is used for most ImageNet experiments.
     """
-    if upsample_method == 'A':
+    if option == 'A':
         # TODO: Figure out why zeros_upsample doesn't work in Theano
-        # Option A: pad with zeros
         x = MaxPooling2D(pool_size=(1, 1),
                          strides=(2, 2),
                          border_mode='same')(input_layer)
         x = Lambda(zeropad, output_shape=zeropad_output_shape)(x)
-    elif upsample_method == 'B':
-        # B: pad with zeros
+    elif option == 'B':
         x = Convolution2D(nb_filter=nb_filters, nb_col=1, nb_row=1,
                           subsample=(2, 2),
                           border_mode='same')(input_layer)
@@ -81,25 +63,30 @@ def shortcut(input_layer, nb_filters, output_shape=None,
     return x
 
 
-def basic_block(input, nb_filters, first_stride=(1, 1)):
-    """Add a residual building block
+def basic_unit(input, nb_filters, first_stride=(1, 1)):
+    """Add a residual building block consisting of 2 convolutions
 
     A residual block consists of 2 base convolutions with a short/identity
     connection between the input and output activation
     """
-
-    # First convolution
-    x = base_convolution(input=input, nb_filters=nb_filters,
-                         stride=first_stride)
-    output_shape = x._keras_shape
+    x = Convolution2D(nb_filters, 3, 3,
+                      W_regularizer=l2(WEIGHT_DECAY),
+                      subsample=first_stride,
+                      border_mode='same',
+                      init='he_normal')(input)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
 
     # Second Convolution, with Batch Normalization, without ReLU activation
-    x = base_convolution(input=x, nb_filters=nb_filters, stride=(1, 1),
-                         relu_activation=False)
+    x = Convolution2D(nb_filters, 3, 3,
+                      W_regularizer=l2(WEIGHT_DECAY),
+                      border_mode='same',
+                      init='he_normal')(x)
+    x = BatchNormalization()(x)
 
     # Add the short convolution, with Batch Normalization
     if first_stride == (2, 2):
-        input = shortcut(input, nb_filters, output_shape)
+        input = featuremap_reduction_shortcut(input, nb_filters, option='B')
 
     x = merge(inputs=[x, input], mode='sum')
     x = Activation('relu')(x)
@@ -107,24 +94,31 @@ def basic_block(input, nb_filters, first_stride=(1, 1)):
     return x
 
 
-def bottleneck_block(input, nb_filters, first_stride=(1, 1)):
-    """Add a residual building block
+def bottleneck_unit(input, nb_filters, first_stride=(1, 1)):
+    """The bottleneck unit comprising 1x1 -> 3x3 -> 1x1 convolutions"""
+    x = Convolution2D(nb_filters, 1, 1,
+                      W_regularizer=l2(WEIGHT_DECAY),
+                      subsample=first_stride,
+                      border_mode='same',
+                      init='he_normal')(input)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
 
-    A residual block consists of 2 base convolutions with a short/identity
-    connection between the input and output activation
-    """
-    x = base_convolution(input=input, nb_filters=nb_filters,
-                         conv_shape=(1, 1),
-                         stride=first_stride)
+    x = Convolution2D(nb_filters, 3, 3,
+                      W_regularizer=l2(WEIGHT_DECAY),
+                      border_mode='same',
+                      init='he_normal')(x)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
 
-    x = base_convolution(input=x, nb_filters=nb_filters, conv_shape=(3, 3))
+    x = Convolution2D(4*nb_filters, 1, 1,
+                      W_regularizer=l2(WEIGHT_DECAY),
+                      border_mode='same',
+                      init='he_normal')(x)
+    x = BatchNormalization()(x)
 
-    x = base_convolution(input=x, nb_filters=nb_filters * 4, stride=(1, 1),
-                         conv_shape=(1, 1),
-                         relu_activation=False)
     if first_stride == (2, 2):
-        input = shortcut(input_layer=input, nb_filters=nb_filters * 4,
-                         upsample_method='B')
+        input = featuremap_reduction_shortcut(input_layer=input, nb_filters=nb_filters * 4, option='B')
 
     x = merge(inputs=[x, input], mode='sum')
     x = Activation('relu')(x)
@@ -144,8 +138,7 @@ def stack_units(input, block_unit, nb_blocks, nb_filters, stride=(1, 1)):
 
 def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
                             input_shape=(3, 224, 224),
-                            initial_nb_filters=64,
-                            first_conv_shape=(7, 7)):
+                            initial_nb_filters=64):
     """Construct a residual network with ImageNet architecture.
 
     Parameters
@@ -186,42 +179,37 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
     Reference: http://arxiv.org/abs/1512.03385
     """
 
-    # -------------------------- Layer Group 1 ----------------------------
+    # ------------------------------ Unit Group 1 -----------------------------
     input_image = Input(shape=input_shape)
-    x = base_convolution(input=input_image, nb_filters=initial_nb_filters,
-                         conv_shape=first_conv_shape,
-                         stride=(2, 2))
+    x = Convolution2D(initial_nb_filters, 7, 7, subsample=(2, 2),
+                      border_mode='same')(input_image)
+    x = BatchNormalization()(x)
+    x = Activation('relu')(x)
     # Output shape = (None,64,112,112)
     x = MaxPooling2D(pool_size=(3, 3), strides=(2, 2), border_mode='same')(x)
-
-    x = base_convolution(input=x, nb_filters=initial_nb_filters * 4,
-                         conv_shape=(1, 1),
-                         stride=(1, 1),
-                         relu_activation=False)
+    x = Convolution2D(4*initial_nb_filters, 1, 1, bias=False)(x)
     # Output shape = (None,64,56,56)
     # Output size = 56x56
-    # -------------------------- Layer Group 2 ----------------------------
-    x = stack_units(input=x, block_unit=bottleneck_block, nb_blocks=nb_blocks[1],
+
+    # ------------------------------ Unit Group 2 -----------------------------
+    x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters,
                     stride=(1, 1))
     # Output size = 56x56
-    x = base_convolution(input=x, nb_filters=initial_nb_filters * 4,
-                         conv_shape=(1, 1),
-                         stride=(1, 1),
-                         relu_activation=False)
-    # -------------------------- Layer Group 3 ----------------------------
-    x = stack_units(input=x, block_unit=bottleneck_block, nb_blocks=nb_blocks[1],
+
+    # ------------------------------ Unit Group 3 -----------------------------
+    x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters * 2,
                     stride=(2, 2))
     # Output size = 28x28
 
-    # -------------------------- Layer Group 4 ----------------------------
-    x = stack_units(input=x, block_unit=bottleneck_block, nb_blocks=nb_blocks[1],
+    # ------------------------------ Unit Group 4 -----------------------------
+    x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters * 4,
                     stride=(2, 2))
     # Output size = 14x14
-    # -------------------------- Layer Group 5 ----------------------------
-    x = stack_units(input=x, block_unit=bottleneck_block, nb_blocks=nb_blocks[1],
+    # ------------------------------ Unit Group 5 -----------------------------
+    x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters * 8,
                     stride=(2, 2))
     # Output size = 7x7
@@ -238,7 +226,6 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
 if __name__ == '__main__':
     input_tensor, output_tensor = build_residual_imagenet(initial_nb_filters=64,
                                                           nb_blocks=[1, 3, 4, 6, 3],
-                                                          first_conv_shape=(3, 3),
                                                           input_shape=(3, 224, 224))
 
     model = Model(input=input_tensor, output=output_tensor)

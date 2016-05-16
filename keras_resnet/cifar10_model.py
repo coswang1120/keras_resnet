@@ -6,7 +6,7 @@ from keras.layers.core import Dense, Flatten
 from keras.models import Model
 from keras.optimizers import SGD
 
-from .resnet_utils import base_convolution, basic_block, stack_units
+from .resnet_utils import base_convolution, basic_unit, stack_units
 
 
 def build_cifar_model(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
@@ -48,16 +48,16 @@ def build_cifar_model(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
                          conv_shape=first_conv_shape)
     # Output size = 32x32
     # -------------------------- Layer Group 2 ----------------------------
-    x = stack_units(input=x, block_unit=basic_block, nb_blocks=nb_blocks[1],
+    x = stack_units(input=x, block_unit=basic_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters)
     # Output size = 32x32
     # -------------------------- Layer Group 3 ----------------------------
-    x = stack_units(input=x, block_unit=basic_block, nb_blocks=nb_blocks[1],
+    x = stack_units(input=x, block_unit=basic_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters * 2,
                     stride=(2, 2))
     # Output size = 16x16
     # -------------------------- Layer Group 4 ----------------------------
-    x = stack_units(input=x, block_unit=basic_block, nb_blocks=nb_blocks[1],
+    x = stack_units(input=x, block_unit=basic_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters * 4,
                     stride=(2, 2))
     # Output size = 8x8
