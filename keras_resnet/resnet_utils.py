@@ -126,7 +126,7 @@ def bottleneck_unit(input, nb_filters, first_stride=(1, 1)):
     if first_stride == (2, 2):
         input = featuremap_reduction_shortcut(input_layer=input,
                                               nb_filters=4*nb_filters,
-                                              option='B')
+                                              option='A')
 
     x = merge(inputs=[x, input], mode='sum')
     x = Activation('relu')(x)
@@ -157,8 +157,6 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
     initial_nb_filters : int, optional
        The initial number of filters to use. The number of filters is doubled
        for each layer.
-    first_conv_shape : tuple of 2 ints
-       The shape of the first convolution, also known as the kernel size.
 
     Returns
     -------
@@ -240,4 +238,5 @@ if __name__ == '__main__':
     sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
     model.compile(optimizer=sgd, loss='categorical_crossentropy')
 
-    model.summary()
+    # model.summary()
+    model.to_json()

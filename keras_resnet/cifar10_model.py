@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
     NB_CLASSES = 10
     input_tensor, output_tensor = build_cifar_model(initial_nb_filters=16,
-                                                    nb_blocks=[1, 5, 5, 5],
+                                                    nb_blocks=[1, 2, 2, 2],
                                                     input_shape=(3, 32, 32),
                                                     nb_classes=NB_CLASSES)
 
@@ -86,22 +86,24 @@ if __name__ == '__main__':
     model.compile(optimizer=sgd, loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
-    model.summary()
-
-    (X_train, y_train), (X_test, y_test) = cifar10.load_data()
-    print('X_train shape:', X_train.shape)
-    print(X_train.shape[0], 'train samples')
-    print(X_test.shape[0], 'test samples')
-
-    # convert class vectors to binary class matrices
-    y_train = np_utils.to_categorical(y_train, NB_CLASSES)
-    y_test = np_utils.to_categorical(y_test, NB_CLASSES)
-
-    X_train = X_train.astype('float32')
-    X_test = X_test.astype('float32')
-    X_train /= 255
-    X_test /= 255
-
-    history = model.fit(X_train, y_train,
-                        validation_data=(X_test, y_test),
-                        batch_size=128)
+    print(model.to_json())
+    # model.summary()
+    #
+    # (X_train, y_train), (X_test, y_test) = cifar10.load_data()
+    # print('X_train shape:', X_train.shape)
+    # print(X_train.shape[0], 'train samples')
+    # print(X_test.shape[0], 'test samples')
+    #
+    # # convert class vectors to binary class matrices
+    # y_train = np_utils.to_categorical(y_train, NB_CLASSES)
+    # y_test = np_utils.to_categorical(y_test, NB_CLASSES)
+    #
+    # X_train = X_train.astype('float32')
+    # X_test = X_test.astype('float32')
+    # X_train /= 255
+    # X_test /= 255
+    #
+    #
+    # history = model.fit(X_train, y_train,
+    #                     validation_data=(X_test, y_test),
+    #                     batch_size=128)
