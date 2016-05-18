@@ -10,7 +10,7 @@ from keras.regularizers import l2
 from keras import backend as K
 
 WEIGHT_DECAY = 0.0001
-
+SHORTCUT_OPTION = 'B'
 
 def zeropad(x):
     y = K.zeros_like(x)
@@ -85,9 +85,9 @@ def basic_unit(input, nb_filters, first_stride=(1, 1)):
                       init='he_normal')(x)
     x = BatchNormalization()(x)
 
-    # Add the short convolution, with Batch Normalization
     if first_stride == (2, 2):
-        input = featuremap_reduction_shortcut(input, nb_filters, option='B')
+        input = featuremap_reduction_shortcut(input, nb_filters,
+                                              option=SHORTCUT_OPTION)
 
     x = merge(inputs=[x, input], mode='sum')
     x = Activation('relu')(x)
@@ -126,7 +126,7 @@ def bottleneck_unit(input, nb_filters, first_stride=(1, 1)):
     if first_stride == (2, 2):
         input = featuremap_reduction_shortcut(input_layer=input,
                                               nb_filters=4*nb_filters,
-                                              option='A')
+                                              option='B')
 
     x = merge(inputs=[x, input], mode='sum')
     x = Activation('relu')(x)
