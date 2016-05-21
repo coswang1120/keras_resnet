@@ -12,6 +12,7 @@ from keras import backend as K
 WEIGHT_DECAY = 0.0001
 SHORTCUT_OPTION = 'B'
 
+
 def zeropad(x):
     y = K.zeros_like(x)
     return K.concatenate([x, y], axis=1)
@@ -51,16 +52,7 @@ def featuremap_reduction_shortcut(input_layer, nb_filters,
                           subsample=(2, 2),
                           border_mode='same',
                           bias=False)(x)
-    else:
-        # My style: Take a 1x1 convolution over entire image with 1/4 the
-        # filters and reshapes to the desired output shape with 2x the
-        # number of filters. Works with old versions of TensorFlow where
-        # the stride cannot be larger than the filter size.
-        x = Convolution2D(nb_filter=nb_filters,
-                          nb_row=1, nb_col=1,
-                          W_regularizer=l2(WEIGHT_DECAY),
-                          border_mode='same')(input_layer)
-        x = BatchNormalization()(x)
+
     return x
 
 
@@ -96,7 +88,7 @@ def basic_unit(input, nb_filters, first_stride=(1, 1)):
 
 
 def bottleneck_unit(input, nb_filters, first_stride=(1, 1)):
-    """The bottleneck unit comprising 1x1 -> 3x3 -> 1x1 convolutions
+    """The new bottleneck unit comprising 1x1 -> 3x3 -> 1x1 convolutions
 
     This is the new pre-activation residual unit, Batch Norm -> ReLU -> Conv
     http://arxiv.org/abs/1603.05027
@@ -129,14 +121,12 @@ def bottleneck_unit(input, nb_filters, first_stride=(1, 1)):
                                               option='B')
 
     x = merge(inputs=[x, input], mode='sum')
-    x = Activation('relu')(x)
 
     return x
 
 
 def stack_units(input, block_unit, nb_blocks, nb_filters, stride=(1, 1)):
-    x = block_unit(input=input, nb_filters=nb_filters,
-                   first_stride=stride)
+    x = block_unit(input=input, nb_filters=nb_filters, first_stride=stride)
 
     for _ in range(nb_blocks - 1):
         x = block_unit(input=x, nb_filters=nb_filters)
@@ -205,18 +195,18 @@ def build_residual_imagenet(nb_blocks=[1, 3, 4, 6, 3],
 
     # ------------------------------ Unit Group 3 -----------------------------
     x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
-                    nb_filters=initial_nb_filters * 2,
+                    nb_filters=2*initial_nb_filters,
                     stride=(2, 2))
     # Output size = 28x28
 
     # ------------------------------ Unit Group 4 -----------------------------
     x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
-                    nb_filters=initial_nb_filters * 4,
+                    nb_filters=4*initial_nb_filters,
                     stride=(2, 2))
     # Output size = 14x14
     # ------------------------------ Unit Group 5 -----------------------------
     x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
-                    nb_filters=initial_nb_filters * 8,
+                    nb_filters=8*initial_nb_filters,
                     stride=(2, 2))
     # Output size = 7x7
 
