@@ -10,7 +10,8 @@ from keras_resnet.resnet_utils import WEIGHT_DECAY
 
 def build_cifar_model(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
                       initial_nb_filters=16,
-                      nb_classes=10):
+                      nb_classes=10,
+                      residual_unit=basic_unit):
     """Construct a residual network model for CIFAR10.
 
     Parameters
@@ -47,22 +48,22 @@ def build_cifar_model(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
     # Output size = 32x32
 
     # ------------------------------ Unit Group 2 -----------------------------
-    x = Convolution2D(4*initial_nb_filters, 1, 1,
-                      W_regularizer=l2(WEIGHT_DECAY),
-                      init='he_normal',
-                      bias=False)(x)  # For bottleneck
-    x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
+    # x = Convolution2D(4*initial_nb_filters, 1, 1,
+    #                   W_regularizer=l2(WEIGHT_DECAY),
+    #                   init='he_normal',
+    #                   bias=False)(x)  # For bottleneck
+    x = stack_units(input=x, block_unit=residual_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters)
     # Output size = 32x32
 
     # ------------------------------ Unit Group 3 -----------------------------
-    x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[2],
+    x = stack_units(input=x, block_unit=residual_unit, nb_blocks=nb_blocks[2],
                     nb_filters=2*initial_nb_filters,
                     stride=(2, 2))
     # Output size = 16x16
 
     # ------------------------------ Unit Group 4 -----------------------------
-    x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[3],
+    x = stack_units(input=x, block_unit=residual_unit, nb_blocks=nb_blocks[3],
                     nb_filters=4*initial_nb_filters,
                     stride=(2, 2))
     # Output size = 8x8
@@ -83,7 +84,7 @@ if __name__ == '__main__':
 
     NB_CLASSES = 10
     input_tensor, output_tensor = build_cifar_model(initial_nb_filters=16,
-                                                    nb_blocks=[1, 2, 2, 2],
+                                                    nb_blocks=[1, 5, 5, 5],
                                                     input_shape=(3, 32, 32),
                                                     nb_classes=NB_CLASSES)
 
@@ -92,5 +93,5 @@ if __name__ == '__main__':
     model.compile(optimizer=sgd, loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
-    print(model.to_json())
-    # model.summary()
+    # print(model.to_json())
+    model.summary()

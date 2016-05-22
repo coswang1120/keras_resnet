@@ -57,33 +57,31 @@ def featuremap_reduction_shortcut(input_layer, nb_filters,
 
 
 def basic_unit(input, nb_filters, first_stride=(1, 1)):
-    """Add a residual building block consisting of 2 convolutions
+    """Add a new residual unit with 2 convolutions
 
     A residual block consists of 2 base convolutions with a short/identity
     connection between the input and output activation
     """
+    x = BatchNormalization()(input)
+    x = Activation('relu')(x)
     x = Convolution2D(nb_filters, 3, 3,
                       W_regularizer=l2(WEIGHT_DECAY),
                       subsample=first_stride,
                       border_mode='same',
-                      init='he_normal')(input)
+                      init='he_normal')(x)
+
     x = BatchNormalization()(x)
     x = Activation('relu')(x)
-
-    # Second Convolution, with Batch Normalization, without ReLU activation
     x = Convolution2D(nb_filters, 3, 3,
                       W_regularizer=l2(WEIGHT_DECAY),
                       border_mode='same',
                       init='he_normal')(x)
-    x = BatchNormalization()(x)
 
     if first_stride == (2, 2):
         input = featuremap_reduction_shortcut(input, nb_filters,
                                               option=SHORTCUT_OPTION)
 
     x = merge(inputs=[x, input], mode='sum')
-    x = Activation('relu')(x)
-
     return x
 
 
