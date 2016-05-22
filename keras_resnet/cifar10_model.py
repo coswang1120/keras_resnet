@@ -1,11 +1,12 @@
 from __future__ import division
-
 from keras.layers import Input
 from keras.layers.convolutional import AveragePooling2D, Convolution2D
 from keras.layers.core import Dense, Flatten
-
+from keras.regularizers import l2
 
 from keras_resnet.resnet_utils import basic_unit, bottleneck_unit, stack_units
+from keras_resnet.resnet_utils import WEIGHT_DECAY
+
 
 def build_cifar_model(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
                       initial_nb_filters=16,
@@ -39,11 +40,17 @@ def build_cifar_model(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
 
     # ------------------------------ Unit Group 1 -----------------------------
     input_image = Input(shape=input_shape)
-    x = Convolution2D(initial_nb_filters, 3, 3, border_mode='same')(input_image)
+    x = Convolution2D(initial_nb_filters, 3, 3,
+                      W_regularizer=l2(WEIGHT_DECAY),
+                      border_mode='same',
+                      init='he_normal')(input_image)
     # Output size = 32x32
 
     # ------------------------------ Unit Group 2 -----------------------------
-    x = Convolution2D(4*initial_nb_filters, 1, 1, bias=False)(x)  # For bottleneck
+    x = Convolution2D(4*initial_nb_filters, 1, 1,
+                      W_regularizer=l2(WEIGHT_DECAY),
+                      init='he_normal',
+                      bias=False)(x)  # For bottleneck
     x = stack_units(input=x, block_unit=bottleneck_unit, nb_blocks=nb_blocks[1],
                     nb_filters=initial_nb_filters)
     # Output size = 32x32
@@ -64,14 +71,13 @@ def build_cifar_model(nb_blocks=[1, 3, 3, 3], input_shape=(3, 32, 32),
     x = AveragePooling2D(pool_size=tuple(pool_size))(x)
     # Output size = 1x1
     x = Flatten()(x)
-    output = Dense(nb_classes, activation='softmax')(x)
+    output = Dense(nb_classes, W_regularizer=l2(WEIGHT_DECAY),
+                   activation='softmax')(x)
 
     return input_image, output
 
 
 if __name__ == '__main__':
-    from keras.datasets import cifar10
-    from keras.utils import np_utils
     from keras.models import Model
     from keras.optimizers import SGD
 
@@ -82,28 +88,9 @@ if __name__ == '__main__':
                                                     nb_classes=NB_CLASSES)
 
     model = Model(input=input_tensor, output=output_tensor)
-    sgd = SGD(lr=0.1, decay=1e-4, momentum=0.9)
+    sgd = SGD(lr=0.1, momentum=0.9)
     model.compile(optimizer=sgd, loss='categorical_crossentropy',
                   metrics=['accuracy'])
 
     print(model.to_json())
     # model.summary()
-    #
-    # (X_train, y_train), (X_test, y_test) = cifar10.load_data()
-    # print('X_train shape:', X_train.shape)
-    # print(X_train.shape[0], 'train samples')
-    # print(X_test.shape[0], 'test samples')
-    #
-    # # convert class vectors to binary class matrices
-    # y_train = np_utils.to_categorical(y_train, NB_CLASSES)
-    # y_test = np_utils.to_categorical(y_test, NB_CLASSES)
-    #
-    # X_train = X_train.astype('float32')
-    # X_test = X_test.astype('float32')
-    # X_train /= 255
-    # X_test /= 255
-    #
-    #
-    # history = model.fit(X_train, y_train,
-    #                     validation_data=(X_test, y_test),
-    #                     batch_size=128)
